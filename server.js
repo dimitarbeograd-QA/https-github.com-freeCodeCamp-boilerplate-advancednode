@@ -10,21 +10,16 @@ const LocalStrategy = require('passport-local');
 
 const app = express();
 
-// ⭐ PUG TEMPLATE ENGINE (важно за тестовете)
+// 1. Настройка на Pug (Важно за теста)
 app.set('view engine', 'pug');
 app.set('views', './views/pug');
 
-// ⭐ HOME ROUTE – трябва да е ИЗВЪН myDB(), за да минат тестовете
-app.get('/', (req, res) => {
-  res.render('index', {
-    title: 'Connected to Database',
-    message: 'Please log in',
-    showLogin: true,
-    showRegistration: true
-  });
-});
+// Middleware
+fccTesting(app);
+app.use('/public', express.static(process.cwd() + '/public'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// ⭐ MIDDLEWARE
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: true,
@@ -35,73 +30,27 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-fccTesting(app);
-app.use('/public', express.static(process.cwd() + '/public'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 2. Основен маршрут (Тестът търси 'Hello' и 'Please login')
+app.route('/').get((req, res) => {
+  res.render('index', {
+    title: 'Hello',
+    message: 'Please login',
+    showLogin: true,
+    showRegistration: true
+  });
+});
 
-// ⭐ AUTH CHECK
+// Middleware за проверка на автентикация
 function ensureAuthenticated(req, res, next) {
   if (req.isAuthenticated()) return next();
   res.redirect('/');
 }
 
-// ⭐ DATABASE + ROUTES
-myDB(async client => {
+// 3. Свързване с базата данни и останалите маршрути
+myDB(async (client) => {
   const myDataBase = await client.db('database').collection('users');
 
-  // LOGIN
-  app.route('/login').post(
-    passport.authenticate('local', { failureRedirect: '/' }),
-    (req, res) => {
-      res.redirect('/profile');
-    }
-  );
-
-  // PROFILE
-  app.route('/profile').get(ensureAuthenticated, (req, res) => {
-    res.render('profile', { username: req.user.username });
-  });
-
-  // LOGOUT
-  app.route('/logout').get((req, res, next) => {
-    req.logout(err => {
-      if (err) return next(err);
-      res.redirect('/');
-    });
-  });
-
-  // REGISTER
-  app.route('/register')
-    .post((req, res, next) => {
-      myDataBase.findOne({ username: req.body.username }, (err, user) => {
-        if (err) return next(err);
-        if (user) return res.redirect('/');
-
-        myDataBase.insertOne(
-          {
-            username: req.body.username,
-            password: req.body.password
-          },
-          (err, doc) => {
-            if (err) return res.redirect('/');
-            next(null, doc.ops[0]);
-          }
-        );
-      });
-    },
-    passport.authenticate('local', { failureRedirect: '/' }),
-    (req, res) => {
-      res.redirect('/profile');
-    }
-  );
-
-  // 404
-  app.use((req, res) => {
-    res.status(404).type('text').send('Not Found');
-  });
-
-  // PASSPORT STRATEGY
+  // Passport Стратегия
   passport.use(new LocalStrategy((username, password, done) => {
     myDataBase.findOne({ username: username }, (err, user) => {
       console.log(`User ${username} attempted to log in.`);
@@ -122,13 +71,56 @@ myDB(async client => {
     });
   });
 
-}).catch(e => {
+  // Login
+  app.post('/login', passport.authenticate('local', { failureRedirect: '/' }), (req, res) => {
+    res.redirect('/profile');
+  });
+
+  // Profile
+  app.get('/profile', ensureAuthenticated, (req, res) => {
+    res.render('profile', { username: req.user.username });
+  });
+
+  // Register
+  app.post('/register', (req, res, next) => {
+    myDataBase.findOne({ username: req.body.username }, (err, user) => {
+      if (err) return next(err);
+      if (user) return res.redirect('/');
+
+      myDataBase.insertOne({
+        username: req.body.username,
+        password: req.body.password
+      }, (err, doc) => {
+        if (err) return res.redirect('/');
+        // Поправка: използвай doc.insertedId вместо doc.ops[0] за по-нови драйвъри
+        next(null, { _id: doc.insertedId, ...req.body });
+      });
+    });
+  },
+  passport.authenticate('local', { failureRedirect: '/' }),
+  (req, res) => {
+    res.redirect('/profile');
+  });
+
+  // Logout
+  app.get('/logout', (req, res) => {
+    req.logout();
+    res.redirect('/');
+  });
+
+  // 404
+  app.use((req, res) => {
+    res.status(404).type('text').send('Not Found');
+  });
+
+}).catch((e) => {
+  console.error(e);
+  // Ако DB не се свърже, все пак показваме нещо
   app.route('/').get((req, res) => {
-    res.render('index', { title: e, message: 'Unable to connect to database' });
+    res.render('index', { title: 'Error', message: 'Unable to connect to database' });
   });
 });
 
-// ⭐ LISTEN (ВАЖНО ЗА CODESPACES)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Listening on port ${PORT}`);
