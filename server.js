@@ -32,14 +32,8 @@ app.use(passport.session());
 
 // 2. Основен маршрут (Тестът търси 'Hello' и 'Please login')
 app.route('/').get((req, res) => {
-  res.render('index', {
-    title: 'Hello',
-    message: 'Please login',
-    showLogin: true,
-    showRegistration: true
-  });
-});
-
+res.render('index');
+    
 // Middleware за проверка на автентикация
 function ensureAuthenticated(req, res, next) {
   if (req.isAuthenticated()) return next();
