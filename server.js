@@ -10,11 +10,15 @@ const LocalStrategy = require('passport-local');
 
 const app = express();
 
-// 1. Настройка на Pug (Важно за теста)
+// -----------------------------
+// 1. Настройка на Pug (ВАЖНО)
+// -----------------------------
 app.set('view engine', 'pug');
 app.set('views', './views/pug');
 
+// -----------------------------
 // Middleware
+// -----------------------------
 fccTesting(app);
 app.use('/public', express.static(process.cwd() + '/public'));
 app.use(express.json());
@@ -30,21 +34,28 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// 2. Основен маршрут (Тестът търси 'Hello' и 'Please login')
+// -----------------------------
+// 2. Основен маршрут (за теста)
+// -----------------------------
 app.route('/').get((req, res) => {
-res.render('index');
-    
-// Middleware за проверка на автентикация
+  res.render('index');   // FreeCodeCamp ИСКА ТОЧНО ТОВА
+});
+
+// -----------------------------
+// Middleware за проверка
+// -----------------------------
 function ensureAuthenticated(req, res, next) {
   if (req.isAuthenticated()) return next();
   res.redirect('/');
 }
 
-// 3. Свързване с базата данни и останалите маршрути
+// -----------------------------
+// 3. Свързване с базата данни
+// -----------------------------
 myDB(async (client) => {
   const myDataBase = await client.db('database').collection('users');
 
-  // Passport Стратегия
+  // Passport стратегия
   passport.use(new LocalStrategy((username, password, done) => {
     myDataBase.findOne({ username: username }, (err, user) => {
       console.log(`User ${username} attempted to log in.`);
@@ -66,9 +77,12 @@ myDB(async (client) => {
   });
 
   // Login
-  app.post('/login', passport.authenticate('local', { failureRedirect: '/' }), (req, res) => {
-    res.redirect('/profile');
-  });
+  app.post('/login',
+    passport.authenticate('local', { failureRedirect: '/' }),
+    (req, res) => {
+      res.redirect('/profile');
+    }
+  );
 
   // Profile
   app.get('/profile', ensureAuthenticated, (req, res) => {
@@ -86,7 +100,6 @@ myDB(async (client) => {
         password: req.body.password
       }, (err, doc) => {
         if (err) return res.redirect('/');
-        // Поправка: използвай doc.insertedId вместо doc.ops[0] за по-нови драйвъри
         next(null, { _id: doc.insertedId, ...req.body });
       });
     });
@@ -109,12 +122,14 @@ myDB(async (client) => {
 
 }).catch((e) => {
   console.error(e);
-  // Ако DB не се свърже, все пак показваме нещо
   app.route('/').get((req, res) => {
     res.render('index', { title: 'Error', message: 'Unable to connect to database' });
   });
 });
 
+// -----------------------------
+// Start server
+// -----------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Listening on port ${PORT}`);
